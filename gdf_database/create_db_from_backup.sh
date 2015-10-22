@@ -34,22 +34,7 @@ COMMENT ON DATABASE ${dbname}
 
 
 # Install required extensions to database
-psql -d ${dbname} -c "
-CREATE EXTENSION postgis
-  SCHEMA public;"
-
-psql -d ${dbname} -c "
-CREATE SCHEMA topology
-  AUTHORIZATION cube_admin;"
-
-psql -d ${dbname} -c "
-CREATE EXTENSION postgis_topology
-  SCHEMA topology;"
-
-psql -d ${dbname} -c "
-CREATE EXTENSION adminpack
-  SCHEMA pg_catalog;"
-
+psql -d ${dbname} -f extensions.sql 
 
 # Restore DB from backup
 pg_restore -d ${dbname} ${db_backup_file}
