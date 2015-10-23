@@ -1,6 +1,8 @@
 #!/bin/bash
 # Script to setup an empty GDF database on a freshly installed local PostGIS database
 
+set -eu
+
 dbname=gdf_empty
 
 # Create default GDF groups and users
@@ -21,7 +23,7 @@ CREATE ROLE cube_user LOGIN
   ENCRYPTED PASSWORD 'md57c93896ee15147e58d639d52196e092a'
   NOSUPERUSER INHERIT NOCREATEDB NOCREATEROLE NOREPLICATION;
 GRANT cube_user_group TO cube_user;
-"
+" || true
 
 # Create new database ${dbname}
 psql -d postgres -c "
