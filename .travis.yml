@@ -52,8 +52,8 @@ before_install:
   # database that ensures the database setup scripts are working
   - ./gdf_db_setup.sh localhost gdf_empty
   - psql -f gdf_database/example-users.sql
-  - ./create_db_from_backup.sh gdf_test_modis ../gdf_modis_20150710.backup
-  - ./create_db_from_backup.sh gdf_test_ls ../gdf_landsat_20150710.backup
+  - ./create_db_from_backup.sh localhost gdf_test_modis ../gdf_modis_20150710.backup
+  - ./create_db_from_backup.sh localhost gdf_test_ls ../gdf_landsat_20150710.backup
   - cd ..
 
 install:

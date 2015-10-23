@@ -32,7 +32,7 @@ Restore a PostgreSQL DB backup to a new DB
 Restoring database back-up::
 
     cd gdf_database
-    ./create_db_from_backup.sh <new_db_name> <db_backup_filename>
+    ./create_db_from_backup.sh <hostname> <new_db_name> <db_backup_filename>
 
 .. note::
 

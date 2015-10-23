@@ -2,6 +2,7 @@
 # Script to setup an empty GDF database on a freshly installed local PostGIS database
 
 set -eu
+
 echo_bold() { printf "\e[31m${@}\e[0m\n"; }
 echo_error() { >&2 echo "$@"; }
 
