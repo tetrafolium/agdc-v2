@@ -11,10 +11,20 @@ AGDC Database Setup
 Setup local DB server
 ---------------------
 
-Add standard groups & users and create new, empty DB::
+Add standard groups and create a new, empty DB.::
 
     cd gdf_database
-    ./gdf_db_setup.sh
+    ./gdf_db_setup.sh <hostname> <db_name>
+
+Add your users to the groups '``cube_admin_group``' and '``cube_user_group``'.
+
+eg.::
+
+    psql -h database_host -c "create user example_admin login password 'example_admin'"
+    psql -h database_host -c "grant cube_admin_group to example_admin"
+
+    psql -h database_host -c "create user example_user login password 'example_user'"
+    psql -h database_host -c "grant cube_user_group to example_user"
 
 Restore a PostgreSQL DB backup to a new DB
 ------------------------------------------
