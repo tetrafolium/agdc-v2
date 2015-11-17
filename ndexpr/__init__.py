@@ -201,6 +201,7 @@ class NDexpr(object):
         indexexpr = Forward()
 
         atom = (Optional("-") +
+                (variable + seq + expr).setParseAction(self.pushAssign) |
                 indexexpr.setParseAction(self.pushIndex) |
                 (lpar + expr + qmark.setParseAction(self.pushTernary1) + expr +
                  scolon.setParseAction(self.pushTernary2) + expr +
@@ -303,6 +304,7 @@ class NDexpr(object):
         self.exprStack.append("{}")
 
     def pushAssign(self, strg, loc, toks):
+        self.exprStack.append(toks[0])
         self.exprStack.append("=")
 
     def pushTernary(self, strg, loc, toks):
@@ -330,8 +332,8 @@ class NDexpr(object):
         elif op == 'unary !':
             return not self.evaluateStack(s)
         elif op == "=":
-            op2 = self.evaluateStack(s)
             op1 = s.pop()
+            op2 = self.evaluateStack(s)
             self.f.f_globals[op1] = op2
 
             # code to write to locals, need to sort out when to write to locals/globals.
@@ -456,6 +458,7 @@ class NDexpr(object):
         self.f = sys._getframe(1)
         self.exprStack = []
         results = self.parser.parseString(s)
+        #print(self.exprStack)
         val = self.evaluateStack(self.exprStack[:])
         return val
 
