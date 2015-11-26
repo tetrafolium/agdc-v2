@@ -19,6 +19,7 @@ addons:
     - libnetcdf-dev
     - libproj-dev
     - libgdal1-dev
+    - libudunits2-0 # Used by cf-checker
 
 before_install:
   # Create a database for the integration tests.
@@ -28,6 +29,7 @@ install:
   - export CPLUS_INCLUDE_PATH="/usr/include/gdal"
   - export C_INCLUDE_PATH="/usr/include/gdal"
   - pip install -r requirements.txt coveralls gdal==1.10.0
+  - easy_install cdat-lite cfchecker
   - python setup.py install
 
 script:
