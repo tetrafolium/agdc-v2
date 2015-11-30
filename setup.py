@@ -27,7 +27,6 @@ setup(name='agdc-v2',
           'netcdf4',
           'pypeg2',
           'psycopg2',
-          'gdal',
       ],
       tests_require=[
           'pytest',
