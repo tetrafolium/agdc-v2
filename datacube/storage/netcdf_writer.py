@@ -9,7 +9,7 @@ import os.path
 from datetime import datetime
 
 import netCDF4
-from osgeo import osr
+from datacube.compat import SpatialReference
 
 from datacube.model import VariableAlreadyExists
 
@@ -74,7 +74,7 @@ class NetCDFWriter(object):
         lat[:] = lats
 
     def _set_crs(self, tile_spec):
-        projection = osr.SpatialReference(str(tile_spec.projection))
+        projection = SpatialReference(str(tile_spec.projection))
         assert projection.IsGeographic()
         crso = self.nco.createVariable('crs', 'i4')
         crso.long_name = projection.GetAttrValue('GEOGCS')  # "Lon/Lat Coords in WGS84"

@@ -62,3 +62,52 @@ def with_metaclass(meta, *bases):
             return meta(name, bases, d)
 
     return metaclass('temporary_class', None, {})
+
+
+def _make_ctypes_spatialreference():
+    import rasterio
+    import ctypes
+
+    try:
+        _gdal = ctypes.cdll.LoadLibrary('libgdal.so.1')
+    except WindowsError:
+        _gdal = ctypes.cdll.LoadLibrary('gdal111')
+
+    OSRNewSpatialReference = _gdal.OSRNewSpatialReference
+    OSRNewSpatialReference.restype = ctypes.c_void_p
+
+    OSRIsGeographic = _gdal.OSRIsGeographic
+    OSRIsGeographic.restype = ctypes.c_bool
+
+    OSRGetSemiMajor = _gdal.OSRGetSemiMajor
+    OSRGetSemiMajor.restype = ctypes.c_double
+
+    OSRGetInvFlattening = _gdal.OSRGetInvFlattening
+    OSRGetInvFlattening.restype = ctypes.c_double
+
+    OSRGetAttrValue = _gdal.OSRGetAttrValue
+    OSRGetAttrValue.restype = str
+
+    class SpatialReference(object):
+        def __init__(self, arg=""):
+            self.sr = OSRNewSpatialReference(arg)
+
+        def IsGeographic(self):
+            return OSRIsGeographic(self.sr)
+
+        def GetSemiMajor(self):
+            return OSRGetSemiMajor(self.sr, 0)
+
+        def GetInvFlattening(self):
+            return OSRGetInvFlattening(self.sr, 0)
+
+
+        def GetAttrValue(self, key, attr=0):
+            return OSRGetAttrValue(self.sr, key, attr)
+
+    return SpatialReference
+
+try:
+    from osgeo.osr import SpatialReference
+except ImportError:
+    SpatialReference = _make_ctypes_spatialreference()
