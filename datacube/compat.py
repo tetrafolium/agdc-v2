@@ -65,13 +65,38 @@ def with_metaclass(meta, *bases):
 
 
 def _make_ctypes_spatialreference():
-    import rasterio
+    # Inspired by https://github.com/django/django/blob/master/django/contrib/gis/gdal/libgdal.py
+    import rasterio  # Seems to add library paths to a gdal library for us
     import ctypes
+    import ctypes.util
+    import os
 
-    try:
-        _gdal = ctypes.cdll.LoadLibrary('libgdal.so.1')
-    except WindowsError:
-        _gdal = ctypes.cdll.LoadLibrary('gdal111')
+    if os.name == 'nt':
+        # Windows NT shared libraries
+        lib_names = ['gdal111', 'gdal110', 'gdal19', 'gdal18', 'gdal17']
+    elif os.name == 'posix':
+        # *NIX library names.
+        lib_names = ['gdal', 'GDAL', 'gdal1.11.0', 'gdal1.10.0', 'gdal1.9.0',
+            'gdal1.8.0', 'gdal1.7.0']
+
+    # Using the ctypes `find_library` utility  to find the
+    # path to the GDAL library from the list of library names.
+    if lib_names:
+        for lib_name in lib_names:
+            lib_path = ctypes.util.find_library(lib_name)
+            if lib_path is not None:
+                break
+
+    if lib_path is None:
+        raise Exception("Could not find GDAL Library")
+
+    if os.name == 'nt':
+        try:
+            _gdal = ctypes.WinDLL(lib_path)
+        except WindowsError:
+            _gdal = ctypes.CDLL(lib_path)
+    else:
+        _gdal = ctypes.CDLL(lib_path)
 
     OSRNewSpatialReference = _gdal.OSRNewSpatialReference
     OSRNewSpatialReference.restype = ctypes.c_void_p
