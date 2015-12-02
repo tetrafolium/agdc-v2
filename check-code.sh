@@ -9,7 +9,7 @@ export py_files="datacube examples/*.py"
 
 pylint --reports no ${py_files}
 
-pep8 --max-line-length 120 ${py_files}
+pep8 --max-line-length 120 --exclude datacube/api ${py_files}
 
 # Check for basic Python 3 incompatiblities.
 pylint --py3k --reports no ${py_files}
