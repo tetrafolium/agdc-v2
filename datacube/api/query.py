@@ -24,8 +24,11 @@ __author__ = "Simon Oldfield"
 import logging
 import sys
 from datacube.api.utils import extract_feature_geometry_wkb, DateCriteria, SatelliteDateCriteria
-from datacube.api.model import Tile, Cell, DatasetType
+from datacube.api.model import Tile, Cell, DatasetType, DatasetTile, Satellite
+from datacube.index import index_connect
+from datacube.model import Range
 from enum import Enum
+import dateutil.parser
 
 
 _log = logging.getLogger(__name__)
@@ -1095,6 +1098,28 @@ def list_tiles_as_generator(x, y, satellites, acq_min, acq_max, dataset_types, i
     :return: List of tiles
     :rtype: list[datacube.api.model.Tile]
     """
+
+    index = index_connect()
+    # TODO: time range
+    # TODO: dataset
+    # TODO: satellite in satellites
+    sus = index.storage.search(lat=Range(min(y)+0.0001, max(y)+0.9999),
+                               lon=Range(min(x)+0.0001, max(x)+0.9999),
+                               satellite='Landsat-5')
+    for su in sus:
+        yield Tile(
+            acquisition_id=None,
+            x_index=su.descriptor['extents']['geospatial_lon_min'],
+            y_index=su.descriptor['extents']['geospatial_lon_min'],
+            start_datetime=dateutil.parser.parse(su.descriptor['extents']['time_min']),
+            end_datetime=dateutil.parser.parse(su.descriptor['extents']['time_max']),
+            end_datetime_year=None,
+            end_datetime_month=None,
+            datasets={
+                DatasetType.ARG25: DatasetTile(Satellite.LS5.value, DatasetType.ARG25.value, su.filepath)
+            })
+    return
+
 
     conn, cursor = None, None
 
