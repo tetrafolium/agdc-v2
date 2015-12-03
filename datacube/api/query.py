@@ -1105,7 +1105,7 @@ def list_tiles_as_generator(x, y, satellites, acq_min, acq_max, dataset_types, i
     # TODO: satellite in satellites
     sus = index.storage.search(lat=Range(min(y)+0.0001, max(y)+0.9999),
                                lon=Range(min(x)+0.0001, max(x)+0.9999),
-                               satellite='Landsat-5')
+                               satellite=[sat.value for sat in satellites])
     for su in sus:
         yield Tile(
             acquisition_id=None,
@@ -1116,7 +1116,7 @@ def list_tiles_as_generator(x, y, satellites, acq_min, acq_max, dataset_types, i
             end_datetime_year=None,
             end_datetime_month=None,
             datasets={
-                DatasetType.ARG25: DatasetTile(Satellite.LS5.value, DatasetType.ARG25.value, su.filepath)
+                DatasetType.ARG25: DatasetTile(Satellite.LS5.name, DatasetType.ARG25.name, su.filepath)
             })
     return
 
