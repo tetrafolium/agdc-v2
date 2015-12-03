@@ -32,9 +32,9 @@ _log = logging.getLogger(__name__)
 class Satellite(Enum):
     __order__ = "LS5 LS7 LS8"
 
-    LS5 = "LS5"
-    LS7 = "LS7"
-    LS8 = "LS8"
+    LS5 = "Landsat-5"
+    LS7 = "Landsat-7"
+    LS8 = "Landsat-8"
 
 
 class Ls5TmBands(Enum):
