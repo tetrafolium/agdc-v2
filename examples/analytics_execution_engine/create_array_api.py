@@ -1,13 +1,13 @@
 # ------------------------------------------------------------------------------
-# Name:       create_array.py
+# Name:       create_array_api.py
 # Purpose:    create array example for Analytics Engine & Execution Engine.
 #             pre-integration with NDExpr.
-#             pre-integration with Data Access API.
+#             post-integration with Data Access API.
 #             Taken from the GDF Trial.
 #
 # Author:     Peter Wang
 #
-# Created:    20 November 2015
+# Created:    22 December 2015
 # Copyright:  2015 Commonwealth Scientific and Industrial Research Organisation
 #             (CSIRO)
 # License:    This software is open source under the Apache v2.0 License
@@ -36,10 +36,9 @@ def main():
     a = AnalyticsEngine()
     e = ExecutionEngine()
 
-    dimensions = {'X': {'range': (147.0, 147.256)},
-                  'Y': {'range': (-37.0, -36.744)}}
+    dimensions = {'longitude': {'range': (150, 150.256)}, 'latitude': {'range': (-34.0, -33.744)}}
 
-    arrays = a.createArray('LS5TM', ['B40'], dimensions, 'get_data')
+    arrays = a.createArray(('LANDSAT_5', 'EODS_NBAR'), ['band_30', 'band_40'], dimensions, 'get_data')
 
     e.executePlan(a.plan)
 

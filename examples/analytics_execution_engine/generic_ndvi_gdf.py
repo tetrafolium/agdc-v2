@@ -1,12 +1,13 @@
 # ------------------------------------------------------------------------------
-# Name:       generic_ndvi_mask_expression.py
+# Name:       generic_ndvi_gdf.py
 # Purpose:    generic ndvi example for Analytics Engine & Execution Engine.
-#             post-integration with NDExpr.
+#             pre-integration with NDExpr.
 #             pre-integration with Data Access API.
+#             Taken from the GDF Trial.
 #
 # Author:     Peter Wang
 #
-# Created:    7 December 2015
+# Created:    20 November 2015
 # Copyright:  2015 Commonwealth Scientific and Industrial Research Organisation
 #             (CSIRO)
 # License:    This software is open source under the Apache v2.0 License
@@ -32,20 +33,18 @@ from datacube.analytics.utils.analytics_utils import plot
 
 
 def main():
-    a = AnalyticsEngine()
-    e = ExecutionEngine()
+    a = AnalyticsEngine(gdf=True)
+    e = ExecutionEngine(gdf=True)
 
     dimensions = {'X': {'range': (147.0, 147.256)},
                   'Y': {'range': (-37.0, -36.744)}}
 
-    b40 = a.createArray('LS5TM', ['B40'], dimensions, 'b40')
-    b30 = a.createArray('LS5TM', ['B30'], dimensions, 'b30')
-    PQ = a.createArray('LS5TMPQ', ['PQ'], dimensions, 'pq')
-    ndvi = a.applyExpression([b40, b30], '((array1 - array2) / (array1 + array2))', 'ndvi')
-    mask = a.applyExpression([ndvi, PQ], 'array1{array2}', 'mask')
+    arrays = a.createArray('LS5TM', ['B40', 'B30'], dimensions, 'get_data')
+    ndvi = a.applyBandMath(arrays, '((array1 - array2) / (array1 + array2))', 'ndvi')
+
     e.executePlan(a.plan)
 
-    plot(e.cache['mask'])
+    plot(e.cache['ndvi'])
 
 if __name__ == '__main__':
     main()

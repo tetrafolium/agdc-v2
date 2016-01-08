@@ -1,6 +1,6 @@
 # ------------------------------------------------------------------------------
-# Name:       chain_ndvi_median.py
-# Purpose:    chain_ndvi_median example for Analytics Engine & Execution Engine.
+# Name:       create_array_gdf.py
+# Purpose:    create array example for Analytics Engine & Execution Engine.
 #             pre-integration with NDExpr.
 #             pre-integration with Data Access API.
 #             Taken from the GDF Trial.
@@ -33,24 +33,17 @@ from datacube.analytics.utils.analytics_utils import plot
 
 
 def main():
-    a = AnalyticsEngine()
-    e = ExecutionEngine()
+    a = AnalyticsEngine(gdf=True)
+    e = ExecutionEngine(gdf=True)
 
     dimensions = {'X': {'range': (147.0, 147.256)},
                   'Y': {'range': (-37.0, -36.744)}}
 
-    arrays = a.createArray('LS5TM', ['B40', 'B30'], dimensions, 'get_data')
-    ndvi = a.applyBandMath(arrays, '((array1 - array2) / (array1 + array2))', 'ndvi')
-    arrays2 = a.createArray('LS5TM', ['B40', 'B30'], dimensions, 'get_data2')
-    ndvi2 = a.applyBandMath(arrays2, '((array1 - array2) / (array1 + array2))', 'ndvi2')
-    average = a.applyBandMath([ndvi, ndvi2], '((array1 + array2) / 2)', 'average')
-    pq_data = a.createArray('LS5TMPQ', ['PQ'], dimensions, 'pq_data')
-    mask = a.applyCloudMask(average, pq_data, 'mask')
-    median_t = a.applyGenericReduction(mask, ['T'], 'median(array1)', 'medianT')
-    result = e.executePlan(a.plan)
+    arrays = a.createArray('LS5TM', ['B40'], dimensions, 'get_data')
 
-    plot(e.cache['medianT'])
+    e.executePlan(a.plan)
 
+    plot(e.cache['get_data'])
 
 if __name__ == '__main__':
     main()

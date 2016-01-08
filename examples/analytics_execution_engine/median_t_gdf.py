@@ -1,12 +1,13 @@
 # ------------------------------------------------------------------------------
-# Name:       median_t_expression.py
-# Purpose:    median reduction example for Analytics Engine & Execution Engine.
-#             post-integration with NDExpr.
+# Name:       median_t_gdf.py
+# Purpose:    median t example for Analytics Engine & Execution Engine.
+#             pre-integration with NDExpr.
 #             pre-integration with Data Access API.
+#             Taken from the GDF Trial.
 #
 # Author:     Peter Wang
 #
-# Created:    7 December 2015
+# Created:    20 November 2015
 # Copyright:  2015 Commonwealth Scientific and Industrial Research Organisation
 #             (CSIRO)
 # License:    This software is open source under the Apache v2.0 License
@@ -32,19 +33,20 @@ from datacube.analytics.utils.analytics_utils import plot
 
 
 def main():
-    a = AnalyticsEngine()
-    e = ExecutionEngine()
+    a = AnalyticsEngine(gdf=True)
+    e = ExecutionEngine(gdf=True)
 
     dimensions = {'X': {'range': (147.0, 147.256)},
                   'Y': {'range': (-37.0, -36.744)}}
 
-    arrays = a.createArray('LS5TM', ['B40'], dimensions, 'arrays')
-    median = a.applyExpression(arrays, 'median(array1, 0)', 'medianT')
-    pprint(median)
+    arrays = a.createArray('LS5TM', ['B40'], dimensions, 'get_data')
+    median_t = a.applyGenericReduction(arrays, ['T'], 'median(array1)', 'medianT')
 
-    e.executePlan(a.plan)
+    result = e.executePlan(a.plan)
 
     plot(e.cache['medianT'])
+
+    pprint(e.cache)
 
 if __name__ == '__main__':
     main()

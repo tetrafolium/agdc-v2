@@ -1,6 +1,6 @@
 # ------------------------------------------------------------------------------
-# Name:       median_t.py
-# Purpose:    median t example for Analytics Engine & Execution Engine.
+# Name:       generic_ndvi_mask_gdf.py
+# Purpose:    generic ndvi example for Analytics Engine & Execution Engine.
 #             pre-integration with NDExpr.
 #             pre-integration with Data Access API.
 #             Taken from the GDF Trial.
@@ -33,20 +33,20 @@ from datacube.analytics.utils.analytics_utils import plot
 
 
 def main():
-    a = AnalyticsEngine()
-    e = ExecutionEngine()
+    a = AnalyticsEngine(gdf=True)
+    e = ExecutionEngine(gdf=True)
 
     dimensions = {'X': {'range': (147.0, 147.256)},
                   'Y': {'range': (-37.0, -36.744)}}
 
-    arrays = a.createArray('LS5TM', ['B40'], dimensions, 'get_data')
-    median_t = a.applyGenericReduction(arrays, ['T'], 'median(array1)', 'medianT')
+    arrays = a.createArray('LS5TM', ['B40', 'B30'], dimensions, 'get_data')
+    ndvi = a.applyBandMath(arrays, '((array1 - array2) / (array1 + array2))', 'ndvi')
+    pq_data = a.createArray('LS5TMPQ', ['PQ'], dimensions, 'pq_data')
+    mask = a.applyCloudMask(ndvi, pq_data, 'mask')
 
-    result = e.executePlan(a.plan)
+    e.executePlan(a.plan)
 
-    plot(e.cache['medianT'])
-
-    pprint(e.cache)
+    plot(e.cache['mask'])
 
 if __name__ == '__main__':
     main()

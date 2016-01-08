@@ -1,6 +1,6 @@
 # ------------------------------------------------------------------------------
-# Name:       ndvi_mask_median_reduction.py
-# Purpose:    ndvi + mask + median reduction example for ndexpr
+# Name:       ndvi_mask_gdf.py
+# Purpose:    ndvi example for ndexpr
 #             pre-integration into Analytics Engine & Execution Engine.
 #             pre-integration with Data Access API.
 #
@@ -64,18 +64,11 @@ def main():
     pq = nd.get_pqa_mask(d2['arrays']['PQ'].values)
 
     print('NDexpr demo begins here')
-    # ndvi + mask + median reduction example as expressed in this language.
+    # perform ndvi as expressed in this language.
     ndvi = nd.evaluate('((b40 - b30) / (b40 + b30))')
+    # perform mask on ndvi as expressed in this language.
     masked_ndvi = nd.evaluate('ndvi{pq}')
-
-    # currently dimensions are integer indices, later will be labels when
-    # Data Access API Interface has been finalised.
-    reduction_on_dim0 = nd.evaluate('median(masked_ndvi, 0)')
-    reduction_on_dim01 = nd.evaluate('median(masked_ndvi, 0, 1)')
-    reduction_on_dim012 = nd.evaluate('median(masked_ndvi, 0, 1, 2)')
-    print(reduction_on_dim0)
-    print(reduction_on_dim01)
-    print(reduction_on_dim012)
+    print(masked_ndvi)
 
 if __name__ == '__main__':
     main()

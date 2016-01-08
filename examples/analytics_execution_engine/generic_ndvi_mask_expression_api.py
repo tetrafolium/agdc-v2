@@ -1,13 +1,12 @@
 # ------------------------------------------------------------------------------
-# Name:       generic_ndvi_mask.py
+# Name:       generic_ndvi_mask_expression_api.py
 # Purpose:    generic ndvi example for Analytics Engine & Execution Engine.
-#             pre-integration with NDExpr.
-#             pre-integration with Data Access API.
-#             Taken from the GDF Trial.
+#             post-integration with NDExpr.
+#             post-integration with Data Access API.
 #
 # Author:     Peter Wang
 #
-# Created:    20 November 2015
+# Created:    22 December 2015
 # Copyright:  2015 Commonwealth Scientific and Industrial Research Organisation
 #             (CSIRO)
 # License:    This software is open source under the Apache v2.0 License
@@ -36,14 +35,13 @@ def main():
     a = AnalyticsEngine()
     e = ExecutionEngine()
 
-    dimensions = {'X': {'range': (147.0, 147.256)},
-                  'Y': {'range': (-37.0, -36.744)}}
+    dimensions = {'longitude': {'range': (150, 150.256)}, 'latitude': {'range': (-34.0, -33.744)}}
+    b40 = a.createArray(('LANDSAT_5', 'EODS_NBAR'), ['band_40'], dimensions, 'b40')
+    b30 = a.createArray(('LANDSAT_5', 'EODS_NBAR'), ['band_30'], dimensions, 'b30')
+    PQ = a.createArray(('LANDSAT_5', 'EODS_PQ'), ['band_pixelquality'], dimensions, 'pq')
 
-    arrays = a.createArray('LS5TM', ['B40', 'B30'], dimensions, 'get_data')
-    ndvi = a.applyBandMath(arrays, '((array1 - array2) / (array1 + array2))', 'ndvi')
-    pq_data = a.createArray('LS5TMPQ', ['PQ'], dimensions, 'pq_data')
-    mask = a.applyCloudMask(ndvi, pq_data, 'mask')
-
+    ndvi = a.applyExpression([b40, b30], '((array1 - array2) / (array1 + array2))', 'ndvi')
+    mask = a.applyExpression([ndvi, PQ], 'array1{array2}', 'mask')
     e.executePlan(a.plan)
 
     plot(e.cache['mask'])

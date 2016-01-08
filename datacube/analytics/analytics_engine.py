@@ -29,6 +29,7 @@ from pprint import pprint
 import logging
 
 from datacube.gdf import GDF
+from datacube.api import API
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -66,12 +67,17 @@ class AnalyticsEngine(object):
             'median': 'median(array1)'
         }
 
-    def __init__(self):
+    def __init__(self, gdf=False):
         logger.debug('Initialise Analytics Module.')
-        self.gdf = GDF()
-        self.gdf.debug = False
         self.plan = []
         self.planDict = {}
+
+        self.use_gdf = gdf
+        if self.use_gdf:
+            self.gdf = GDF()
+            self.gdf.debug = False
+        else:
+            self.api = API()
 
     def task(self, name):
 
@@ -94,42 +100,87 @@ class AnalyticsEngine(object):
         for array in variables:
             query_parameters['variables'] += (array,)
 
-        arrayDescriptors = self.gdf.get_descriptor(query_parameters)
+        if self.use_gdf:
+            arrayDescriptors = self.gdf.get_descriptor(query_parameters)
+        else:
+            query_parameters['satellite'] = storage_type[0]
+            query_parameters['product'] = storage_type[1]
+            arrayDescriptors = self.api.get_descriptor(query_parameters)
 
-        if storage_type not in arrayDescriptors.keys():
-            raise AssertionError(storage_type, "not present in descriptor")
+            # stopgap until storage_units are filtered based on descriptors
+            arrayDescriptors[arrayDescriptors.keys()[0]]['storage_units'] = {}
 
-        logger.debug('storage_type = %s', storage_type)
+        if self.use_gdf:
 
-        arrayResults = []
+            if storage_type not in arrayDescriptors.keys():
+                raise AssertionError(storage_type, "not present in descriptor")
 
-        for variable in variables:
-            if variable not in arrayDescriptors[storage_type]['variables']:
-                raise AssertionError(variable, "not present in", storage_type, "descriptor")
+            logger.debug('storage_type = %s', storage_type)
 
-            logger.debug('variable = %s', variable)
+            arrayResults = []
 
-            arrayResult = {}
-            arrayResult['storage_type'] = storage_type
-            arrayResult['variable'] = variable
-            arrayResult['dimensions_order'] = arrayDescriptors[storage_type]['dimensions']
-            arrayResult['dimensions'] = dimensions
-            arrayResult['shape'] = arrayDescriptors[storage_type]['result_shape']
-            arrayResult['data_type'] = arrayDescriptors[storage_type]['variables'][variable]['numpy_datatype_name']
-            arrayResult['no_data_value'] = arrayDescriptors[storage_type]['variables'][variable]['nodata_value']
+            for variable in variables:
+                if variable not in arrayDescriptors[storage_type]['variables']:
+                    raise AssertionError(variable, "not present in", storage_type, "descriptor")
 
-            arrayResults.append({variable: arrayResult})
+                logger.debug('variable = %s', variable)
 
-        task = {}
-        task['array_input'] = arrayResults
-        task['array_output'] = copy.deepcopy(arrayResult)
-        task['array_output']['variable'] = name
-        task['function'] = 'get_data'
-        task['orig_function'] = 'get_data'
-        task['expression'] = 'none'
-        task['operation_type'] = OPERATION_TYPE.Get_Data
+                arrayResult = {}
+                arrayResult['storage_type'] = storage_type
+                arrayResult['variable'] = variable
+                arrayResult['dimensions_order'] = arrayDescriptors[storage_type]['dimensions']
+                arrayResult['dimensions'] = dimensions
+                arrayResult['shape'] = arrayDescriptors[storage_type]['result_shape']
+                arrayResult['data_type'] = arrayDescriptors[storage_type]['variables'][variable]['numpy_datatype_name']
+                arrayResult['no_data_value'] = arrayDescriptors[storage_type]['variables'][variable]['nodata_value']
 
-        return self.add_to_plan(name, task)
+                arrayResults.append({variable: arrayResult})
+
+            task = {}
+            task['array_input'] = arrayResults
+            task['array_output'] = copy.deepcopy(arrayResult)
+            task['array_output']['variable'] = name
+            task['function'] = 'get_data'
+            task['orig_function'] = 'get_data'
+            task['expression'] = 'none'
+            task['operation_type'] = OPERATION_TYPE.Get_Data
+
+            return self.add_to_plan(name, task)
+        else:
+
+            pprint(arrayDescriptors)
+            arrayResults = []
+
+            storage_type_key = arrayDescriptors.keys()[0]
+            for variable in variables:
+                if variable not in arrayDescriptors[storage_type_key]['variables']:
+                    raise AssertionError(variable, "not present in", storage_type_key, "descriptor")
+
+                logger.debug('variable = %s', variable)
+
+                arrayResult = {}
+                arrayResult['storage_type'] = storage_type_key
+                arrayResult['satellite'] = storage_type[0]
+                arrayResult['product'] = storage_type[1]
+                arrayResult['variable'] = variable
+                arrayResult['dimensions_order'] = arrayDescriptors[storage_type_key]['dimensions']
+                arrayResult['dimensions'] = dimensions
+                arrayResult['shape'] = arrayDescriptors[storage_type_key]['result_shape']
+                arrayResult['data_type'] = arrayDescriptors[storage_type_key]['variables'][variable]['datatype']
+                arrayResult['no_data_value'] = arrayDescriptors[storage_type_key]['variables'][variable]['nodata']
+
+                arrayResults.append({variable: arrayResult})
+
+            task = {}
+            task['array_input'] = arrayResults
+            task['array_output'] = copy.deepcopy(arrayResult)
+            task['array_output']['variable'] = name
+            task['function'] = 'get_data'
+            task['orig_function'] = 'get_data'
+            task['expression'] = 'none'
+            task['operation_type'] = OPERATION_TYPE.Get_Data
+
+            return self.add_to_plan(name, task)
 
     def applyCloudMask(self, arrays, mask, name):
         size = len(arrays)
