@@ -48,6 +48,9 @@ import itertools
 from pprint import pprint
 from math import floor
 from distutils.util import strtobool
+from multiprocessing import Process, Lock
+import SharedArray as sa
+
 
 # Set handler for root logger to standard output
 console_handler = logging.StreamHandler(sys.stdout)
@@ -65,7 +68,7 @@ from _arguments import CommandLineArgs
 from _config_file import ConfigFile
 from _gdfnetcdf import GDFNetCDF
 from _gdfutils import dt2secs, secs2dt, days2dt, dt2days, make_dir, directory_writable, log_multiline
-
+from _opendap_utils import get_nc_list
 
 thread_exception = None
 
@@ -93,6 +96,7 @@ class GDF(object):
                                 }
     MAX_UNITS_IN_MEMORY = 1000 #TODO: Do something better than this
     DECIMAL_PLACES = 6
+    MAX_OPENDAP_BYTES = 480000000
     
     def _cache_object(self, cached_object, cache_filename):
         '''
@@ -201,8 +205,9 @@ class GDF(object):
         return database_dict
         
 
-    def __init__(self):
+    def __init__(self, config=None, force_refresh=False, opendap=False, verbose=False):
         '''Constructor for class GDF
+        Parameter: opendap - Boolean value indicating whether to use OPeNDAP endpoints
         '''
         self._config_files = [] # List of config files read
         
@@ -212,10 +217,13 @@ class GDF(object):
         self._command_line_params = self._get_command_line_params(GDF.ARG_DESCRIPTORS)
         
         self._debug = False
-        self.debug = self._command_line_params['debug']
+        self.debug = self._command_line_params['debug'] # Set property
+        
+        self._opendap = opendap
+        self._verbose = verbose
                 
         # Create master configuration dict containing both command line and config_file parameters
-        self._configuration = self._get_config(self._command_line_params['config_files'])       
+        self._configuration = self._get_config(config or self._command_line_params['config_files'])       
         
         self.cache_dir = self._command_line_params['cache_dir'] or self.cache_dir        
         if not directory_writable(self.cache_dir):
@@ -226,12 +234,12 @@ class GDF(object):
                 raise Exception('Unable to write to cache directory %s', self.cache_dir)
                     
         # Convert self.refresh to Boolean
-        self.refresh = self.debug or strtobool(self.refresh)
+        self.refresh = force_refresh or strtobool(self.refresh)
         
-        # Force refresh if config has changed
+        # Force refresh if config has changed and OPeNDAP is not used
         try:
             cached_config = self._get_cached_object('configuration.pkl')
-            self.refresh = self.refresh or (self._configuration != cached_config) 
+            self.refresh = (self.refresh or (self._configuration != cached_config)) and not self._opendap 
         except:
             self.refresh = True
         
@@ -445,6 +453,9 @@ select distinct
     storage_type_id,
     storage_type_name,
     storage_type_location,
+    storage_type_suffix,
+    opendap_root,
+    opendap_catalog,
     measurement_type_tag,
     measurement_metatype_id,
     measurement_type_id,
@@ -515,6 +526,9 @@ left join property using(property_id)
                                          'storage_type_id': record['storage_type_id'],
                                          'storage_type_name': record['storage_type_name'],
                                          'storage_type_location': record['storage_type_location'],
+                                         'storage_type_suffix': record['storage_type_suffix'],
+                                         'opendap_root': record['opendap_root'],
+                                         'opendap_catalog': record['opendap_catalog'],
                                          'measurement_types': collections.OrderedDict(),
                                          'domains': {},
                                          'dimensions': collections.OrderedDict()
@@ -1150,11 +1164,11 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
                                  )
         
         
-    def get_storage_filename(self, storage_type, storage_indices):
+    def get_storage_filename(self, storage_type, storage_indices, storage_suffix='.nc'):
         '''
         Function to return the filename for a storage unit file with the specified storage_type & storage_indices
         '''
-        return storage_type + '_' + '_'.join([str(index) for index in storage_indices]) + '.nc'
+        return storage_type + '_' + '_'.join([str(index) for index in storage_indices if index is not None]) + storage_suffix
     
     def get_storage_dir(self, storage_type, storage_indices):
         '''
@@ -1162,20 +1176,34 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
         '''
         return os.path.join(self._storage_config[storage_type]['storage_type_location'], storage_type)
     
-    def get_storage_path(self, storage_type, storage_indices):
+    def get_storage_path(self, storage_type, storage_indices, storage_suffix='.nc'):
         '''
         Function to return the full path to a storage unit file with the specified storage_type & storage_indices
         '''
-        return os.path.join(self.get_storage_dir(storage_type, storage_indices), self.get_storage_filename(storage_type, storage_indices))
+        return os.path.join(self.get_storage_dir(storage_type, storage_indices), self.get_storage_filename(storage_type, storage_indices, storage_suffix))
     
+    def get_opendap_root(self, storage_type, storage_indices):
+        '''
+        Function to return the filename for a storage unit file with the specified storage_type & storage_indices
+        '''
+        return self._storage_config[storage_type]['opendap_root']
     
+    def get_opendap_url(self, storage_type, storage_indices, storage_suffix='.nc'):
+        '''
+        Function to return the full path to a storage unit file with the specified storage_type & storage_indices
+        '''
+        return os.path.join(self.get_opendap_root(storage_type, storage_indices), self.get_storage_filename(storage_type, storage_indices, storage_suffix))
+       
     def ordinate2index(self, storage_type, dimension, ordinate):
         '''
         Return the storage unit index from the reference system ordinate for the specified storage type, ordinate value and dimension tag
         '''
-        if dimension == 'T':
+        index_reference_system_name = self.storage_config[storage_type]['dimensions'][dimension]['index_reference_system_name']
+        if index_reference_system_name is None:
+            return None
+        elif dimension == 'T':
             #TODO: Make this more general - need to cater for other reference systems besides seconds since epoch
-            index_reference_system_name = self.storage_config[storage_type]['dimensions']['T']['index_reference_system_name'].lower()
+            index_reference_system_name = index_reference_system_name.lower()
             logger.debug('index_reference_system_name = %s', index_reference_system_name)
             datetime_value = secs2dt(ordinate)
             if index_reference_system_name == 'decade':
@@ -1263,11 +1291,53 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
             ]
         }
         '''
+        
+        def read_storage_unit(pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes):
+
+            # Create selection slices to 
+            selection = []
+            for dimension in dimensions:
+                dimension_indices =  np.around(subset_indices[dimension], GDF.DECIMAL_PLACES)
+                logger.debug('%s dimension_indices = %s', dimension, dimension_indices)
+
+                logger.debug('result_array_indices[%s] = %s', dimension, result_array_indices[dimension])
+                if dimension in grouping_function_dict.keys():
+#                    logger.debug('Un-grouped %s min_index_value = %s, max_index_value = %s', dimension, min_index_value, max_index_value)
+                    subset_group_values = grouped_value_dict[dimension][np.in1d(ungrouped_value_dict[dimension], dimension_indices)] # Convert raw time values to group values
+                    logger.debug('%s subset_group_values = %s', dimension, subset_group_values)
+                    dimension_selection = np.in1d(result_array_indices[dimension], subset_group_values) # Boolean array mask for result array
+                    logger.debug('%s dimension_selection = %s', dimension, dimension_selection)
+                else:   
+                    dimension_selection = np.in1d(result_array_indices[dimension], dimension_indices) # Boolean array mask for result array
+                    logger.debug('%s boolean dimension_selection = %s', dimension, dimension_selection)
+                    dimension_selection = slice(np.where(dimension_selection)[0][0], np.where(dimension_selection)[0][-1] + 1)
+                    logger.debug('%s slice dimension_selection = %s', dimension, dimension_selection)
+                selection.append(dimension_selection)
+            logger.debug('selection = %s', selection)
+            
+            # Read data into array for each variable
+            if self._verbose:
+                logger.info('Reading arrays from %s in pid %s', gdfnetcdf.netcdf_filename, os.getpid())
+                
+            for variable_name in variable_names:
+                array_name = '_'.join([variable_name, pid_string])
+                result_array = sa.attach(array_name) # Reference array in Posix shared memory
+                variable_read_start_datetime = datetime.now()
+                result_array[selection] = gdfnetcdf.read_subset(variable_name, range_dict, max_bytes)[0]
+                if self._verbose:
+                    logger.info('Read %s %s array (%s Bytes) in %s',
+                                result_array[selection].shape,
+                                variable_name,
+                                result_array.itemsize * reduce(lambda x, y: x*y, result_array[selection].shape),
+                                datetime.now() - variable_read_start_datetime)
+            # End of function read_storage_unit
+        
         storage_type = data_request_descriptor['storage_type'] 
         
         # Convert dimension tags to upper case
-        range_dict = {dimension.upper(): dimension_spec['range'] 
-                      for dimension, dimension_spec in data_request_descriptor['dimensions'].items()} 
+        range_dict = {dimension.upper(): dimension_spec.get('range')
+                      for dimension, dimension_spec in data_request_descriptor['dimensions'].items() if dimension_spec.get('range')}
+        
         # Create dict of array slices if specified
         slice_dict = {dimension.upper(): slice(*dimension_spec['array_range']) 
                       for dimension, dimension_spec in data_request_descriptor['dimensions'].items() if dimension_spec.get('array_range')} 
@@ -1286,12 +1356,25 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
         range_dimensions = [dimension for dimension in dimensions if dimension in range_dict.keys()] # Range dimensions in order
         dimension_element_sizes = {dimension: dimension_config[dimension]['dimension_element_size'] for dimension in dimensions}
         
+        # Set maximum size for individual OPeNDAP queries
+        max_bytes = self.MAX_OPENDAP_BYTES if self._opendap else None
+                  
+        # Convert scalars into tuples to allow point values instead of dimensional range tuples
+        for dimension in range_dimensions:
+            if not hasattr(range_dict[dimension], '__contains__'):
+                range_dict[dimension] = (range_dict[dimension] - storage_config['dimensions'][dimension]['dimension_element_size']/2,
+                                         range_dict[dimension] + storage_config['dimensions'][dimension]['dimension_element_size']/2
+                                         )
+        
+        
         # Default to all variables if none specified
         variable_names = data_request_descriptor.get('variables') or storage_config['measurement_types'].keys()
 
         # Create complete range dict with minmax tuples for every dimension, either calculated from supplied ranges or looked up from config if not supplied
         #TODO: Do something a bit nicer than the "- 0.000001" on the upper bound get the correct indices on storage unit boundaries
-        index_range_dict = {dimensions[dimension_index]: ((self.ordinate2index(storage_type, dimensions[dimension_index], range_dict[dimensions[dimension_index]][0]),
+        index_range_dict = {dimensions[dimension_index]: ((None, None) 
+                                                          if dimension_config[dimensions[dimension_index]]['index_reference_system_id'] is None
+                                                          else (self.ordinate2index(storage_type, dimensions[dimension_index], range_dict[dimensions[dimension_index]][0]),
                                                            self.ordinate2index(storage_type, dimensions[dimension_index], range_dict[dimensions[dimension_index]][1] - pow(0.1, GDF.DECIMAL_PLACES)))
                                                           if dimensions[dimension_index] in range_dimensions 
                                                           else (dimension_config[dimensions[dimension_index]]['min_index'], 
@@ -1299,16 +1382,28 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
                            for dimension_index in range(len(dimensions))}
         logger.debug('index_range_dict = %s', index_range_dict)
         
+        nc_list = get_nc_list(storage_config['opendap_catalog'],
+                              storage_config['storage_type_suffix']) if self._opendap else None
+        logger.debug('nc_list = %s', nc_list)
+        
         # Find all existing storage units in range and retrieve the indices in ranges for each dimension 
         subset_dict = collections.OrderedDict()
         dimension_index_dict = {dimension: set() for dimension in dimensions} # Dict containing set (converted to list) of unique indices for each dimension
         # Iterate through all possible storage unit index combinations
         #TODO: Make this more targeted and efficient - OK for continuous ranges, but probably could do better
-        for indices in itertools.product(*[range(index_range_dict[dimension][0], index_range_dict[dimension][1]+1) for dimension in dimensions]):
+        for indices in itertools.product(*[range(index_range_dict[dimension][0], index_range_dict[dimension][1]+1) for dimension in dimensions
+                                           if index_range_dict[dimension][0] is not None]):
             logger.debug('indices = %s', indices)
-            storage_path = self.get_storage_path(storage_type, indices)
+            
+            # Compose URL for OPeNDAP or pathname for filesystem access
+            if self._opendap:
+                storage_path = self.get_opendap_url(storage_type, indices, storage_config['storage_type_suffix'])
+            else:
+                storage_path = self.get_storage_path(storage_type, indices, storage_config['storage_type_suffix'])
+                
             logger.debug('Opening storage unit %s', storage_path)
-            if os.path.exists(storage_path):
+            if ((self._opendap and self.get_storage_filename(storage_type, indices, storage_config['storage_type_suffix']) in nc_list) or 
+                (not self._opendap and os.path.exists(storage_path))):
                 gdfnetcdf = GDFNetCDF(storage_config, netcdf_filename=storage_path, decimal_places=GDF.DECIMAL_PLACES)
                 subset_indices = gdfnetcdf.get_subset_indices(range_dict)
                 if not subset_indices:
@@ -1321,7 +1416,12 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
                     dimension_index_dict[dimension] |= set(dimension_indices.tolist())
                     
                 subset_dict[indices] = (gdfnetcdf, subset_indices)  
-        logger.debug('%d storage units found', len(subset_dict))
+            else:
+                logger.debug('storage unit %s does not exist.', storage_path)
+                
+        if self._verbose:
+            logger.info('%d storage units accessible', len(subset_dict))
+            
         logger.debug('subset_dict = %s', subset_dict)
             
         #TODO: Do this check more thoroughly
@@ -1402,51 +1502,49 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
         # Create empty composite result arrays
         array_shape = [len(result_array_indices[dimension]) for dimension in dimensions]
         logger.debug('array_shape = %s', array_shape)
-
+        
+        pid_string = str(os.getpid())
+        
         for variable_name in variable_names:
             dtype = storage_config['measurement_types'][variable_name]['numpy_datatype_name']
             logger.debug('%s dtype = %s', variable_name, dtype)
 
             #TODO: Do something better for variables with no no-data value specified (e.g. PQ)
             nodata_value = storage_config['measurement_types'][variable_name]['nodata_value'] or 0
-            result_dict['arrays'][variable_name] = np.ones(shape=array_shape, dtype=dtype) * nodata_value
+#            result_dict['arrays'][variable_name] = np.ones(shape=array_shape, dtype=dtype) * nodata_value
+
+            array_name = '_'.join([variable_name, pid_string])
+            sa.create(array_name, shape=array_shape, dtype=dtype) # Create array in Posix shared memory
+            
+            result_dict['arrays'][variable_name] = sa.attach(array_name)
+            #TODO: Fix this ugly hack
+            result_dict['arrays'][variable_name][:] = nodata_value
 
         # Iterate through all storage units with data
         # TODO: Implement merging of multiple group layers. Current implemntation breaks when more than one layer per group
+        read_start_datetime = datetime.now()
+        
+        process_list = []
         for indices in subset_dict.keys():
             # Unpack tuple
             gdfnetcdf = subset_dict[indices][0]
             subset_indices = subset_dict[indices][1] 
-                                                           
-            selection = []
-            for dimension in dimensions:
-                dimension_indices =  np.around(subset_indices[dimension], GDF.DECIMAL_PLACES)
-                logger.debug('%s dimension_indices = %s', dimension, dimension_indices)
-
-                logger.debug('result_array_indices[%s] = %s', dimension, result_array_indices[dimension])
-                if dimension in grouping_function_dict.keys():
-#                    logger.debug('Un-grouped %s min_index_value = %s, max_index_value = %s', dimension, min_index_value, max_index_value)
-                    subset_group_values = grouped_value_dict[dimension][np.in1d(ungrouped_value_dict[dimension], dimension_indices)] # Convert raw time values to group values
-                    logger.debug('%s subset_group_values = %s', dimension, subset_group_values)
-                    dimension_selection = np.in1d(result_array_indices[dimension], subset_group_values) # Boolean array mask for result array
-                    logger.debug('%s dimension_selection = %s', dimension, dimension_selection)
-                else:   
-                    dimension_selection = np.in1d(result_array_indices[dimension], dimension_indices) # Boolean array mask for result array
-                    logger.debug('%s boolean dimension_selection = %s', dimension, dimension_selection)
-                    dimension_selection = slice(np.where(dimension_selection)[0][0], np.where(dimension_selection)[0][-1] + 1)
-                    logger.debug('%s slice dimension_selection = %s', dimension, dimension_selection)
-                selection.append(dimension_selection)
-            logger.debug('selection = %s', selection)
             
-            for variable_name in variable_names:
-                # Read data into array
-                read_array = gdfnetcdf.read_subset(variable_name, restricted_range_dict)[0]
-                logger.debug('read_array from %s = %s', gdfnetcdf.netcdf_filename, read_array)
-                logger.debug('read_array.shape from %s = %s', gdfnetcdf.netcdf_filename, read_array.shape)
-
-                logger.debug("result_dict['arrays'][variable_name][selection].shape = %s", result_dict['arrays'][variable_name][selection].shape)
-                result_dict['arrays'][variable_name][selection] = gdfnetcdf.read_subset(variable_name, range_dict)[0]
+            p = Process(target=read_storage_unit, args=(pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes))
+            process_list.append(p)
+            p.start()
+#            read_storage_unit(pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes)
+                                                           
+        # Wait for all processes to finish here
+        for p in process_list:
+            p.join()
         
+        for variable_name in variable_names:
+            sa.delete(variable_name + '_' + str(os.getpid())) # Delete array in Posix shared memory - will not affect 
+
+        if self._verbose:
+            logger.info('Complete %s result read in %s', tuple(len(result_array_indices[dimension]) for dimension in dimensions), datetime.now() - read_start_datetime)
+            
         log_multiline(logger.debug, result_dict, 'result_dict', '\t')
         logger.debug('Result size = %s', tuple(len(result_array_indices[dimension]) for dimension in dimensions))
         

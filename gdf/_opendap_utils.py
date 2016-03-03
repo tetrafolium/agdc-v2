@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 #===============================================================================
 # Copyright (c)  2014 Geoscience Australia
 # All rights reserved.
@@ -24,46 +25,51 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #===============================================================================
-[agdc2gdf]
-# Set default ranges for testing - Can be overridden on command line
-# Inclusive x & y indices
-xmin = 139
-xmax = 141
-ymin = -37
-ymax = -35
-# Inclusive t index (years)
-tmin = 1987
-tmax = 2016
+'''
+OPeNDAP utilities for GDF
 
-#force=True
+Created on Dec 14, 2015
 
-[gdf]
-# Use default config file
-config_files = /home/547/axi547/git_code/gdf/gdf/gdf_default_nci_write.conf
+@author: Alex Ip
+'''
 
-# Single storage type to populate
-storage_type = LS7ETM
+import re
+import logging
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO) # Logging level for this module
+
+# Ignore failed import of URL modules
+try:
+    import urllib
+except:
+    logger.warning('WARNING: Unable to import urllib. Any OPeNDAP function calls will fail.')
+
+try:
+    import lxml.html
+except:
+    logger.warning('WARNING: Unable to import lxml.html. Any OPeNDAP function calls will fail.')
 
 
-[agdc]
-db_ref = agdc_landsat
-# Database connection parameters for AGDC Landsat database
-# Direct connection to master AGDC DB
-#host = 130.56.244.224
-#port = 6432
-#dbname = hypercube_v0
-# Port-forwarded to server at NCI
-#host = localhost
-#port = 5434
-#dbname = hypercube_v0
-# Direct connection to AGDC snapshot
-host = 130.56.244.228
-port = 6432
-dbname = agdc_snapshot_20150930
-user = cube_user
-password = GAcube0
+def get_nc_list(opendap_catalog_url, endpoint_suffix='.nc'):
+    '''
+    get_dataset_list - function to parse specified OPeNDAP catalogue URL and return a list of dataset names.
+    Parameter: opendap_catalog_url - string specifying URL of OPeNDAP catalogue
+    '''
+    data = urllib.urlopen(opendap_catalog_url).read()
+    logger.debug('data = %s', data)
 
-# Selection criteria
-satellite = LS7
-sensors = ETM+
-level = NBAR
+    tree = lxml.html.fromstring(data)
+
+    tables = []
+    for tbl in tree.iterfind('.//table'):
+        tele = []
+        tables.append(tele)
+        for tr in tbl.iterfind('.//tr'):
+            text = [e.strip() for e in tr.xpath('.//text()') if len(e.strip()) > 0]
+            tele.append(text)
+    
+    try:
+      return sorted([row[0] for row in tables[0] if re.match('.*\%s$' % endpoint_suffix, row[0])])
+    except Exception, e:
+      raise Exception("Invalid catalogue %s: %s" % (opendap_catalog_url, e.message))

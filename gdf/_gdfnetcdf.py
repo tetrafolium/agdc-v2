@@ -152,7 +152,7 @@ class GDFNetCDF(object):
                 dimension_min = index * dimension_config['dimension_extent'] + dimension_config['dimension_origin'] + element_size / 2.0 # Half pixel to account for netCDF centre of pixel reference
                 dimension_max = dimension_min + dimension_config['dimension_extent']
                 
-                dimension_index_vector = np.around(np.arange(dimension_min, dimension_max, element_size), GDFNetCDF.DECIMAL_PLACES)
+                dimension_index_vector = np.around(np.arange(dimension_min, dimension_max, element_size), self.decimal_places)
                 
                 # Cater for reversed index (e.g. positive Y index tends Southwards when image origin is in UL/NW corner)
                 if dimension_config['reverse_index']:
@@ -359,7 +359,7 @@ class GDFNetCDF(object):
         return dimension_indices_dict
 
 
-    def read_subset(self, variable_name, range_dict):
+    def read_subset(self, variable_name, range_dict, max_bytes=None):
         '''
         Function to read an array subset of the specified netCDF variable
         Parameters:
@@ -368,6 +368,7 @@ class GDFNetCDF(object):
         Returns:
             subset_array: Numpy array read from netCDF file
             dimension_indices_dict: Dict containing array indices for each dimension
+            max_bytes: integer specifying maximum number of bytes per read. None = unlimited
         '''        
         if not self._isopen:
             self.open()
@@ -413,7 +414,33 @@ class GDFNetCDF(object):
         variable = self.netcdf_object.variables[variable_name]
 #        logger.debug('variable = %s' % variable)
 
-        subset_array = variable[slicing]
+        if max_bytes == None: # Unlimited read size
+            subset_array = variable[slicing]
+        else: # Break read operation into separate reads each under maximum size
+            #TODO: Allow for case where slice size is greater than max_bytes - i.e. partitioning in more than one dimension
+            subset_shape = tuple([s.stop - s.start for s in slicing])
+            logger.debug('subset_shape = %s', subset_shape)
+
+            slice_bytes = variable[[slice(0,1) for dimension in dimension_names]].itemsize * reduce(lambda x, y: x*y, [s.stop - s.start for s in slicing[1:]])
+            max_slices = (max_bytes // 
+                             slice_bytes // 
+                             self.storage_config['dimensions'][dimensions[0]]['dimension_cache'] * 
+                             self.storage_config['dimensions'][dimensions[0]]['dimension_cache'])
+            
+            logger.debug('max_slices = %s', max_slices)
+
+            subset_array = np.zeros(shape=subset_shape, dtype=variable.dtype)
+            
+            for source_start_index in range(slicing[0].start, slicing[0].stop, max_slices):
+                source_stop_index = min([source_start_index + max_slices, slicing[0].stop])
+                source_slicing = [slice(source_start_index, source_stop_index)] + slicing[1:]
+                destination_slicing = [slice(source_slicing[slice_index].start - slicing[slice_index].start, source_slicing[slice_index].stop - slicing[slice_index].start)
+                                       for slice_index in range(len(source_slicing))]
+                
+                logger.debug('source_slicing = %s', source_slicing)
+                logger.debug('destination_slicing = %s', destination_slicing)
+                
+                subset_array[destination_slicing] = variable[source_slicing]
         
         logger.debug('subset_array = %s', subset_array)
         return subset_array, dimension_indices_dict
